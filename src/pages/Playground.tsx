@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Database, Plus, X } from 'lucide-react';
 import SQLEditor from '../components/SQLEditor';
 
@@ -32,14 +32,24 @@ export default function Playground() {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
 
+  // Sync selectedTable with tables
+  useEffect(() => {
+    if (selectedTable) {
+      const updatedTable = tables.find(t => t.id === selectedTable.id);
+      if (updatedTable) {
+        setSelectedTable(updatedTable);
+      }
+    }
+  }, [tables]);
+
   const parseCreateTableSQL = (sql: string): Table | null => {
     try {
       const tableNameMatch = sql.match(/CREATE\s+TABLE\s+(\w+)\s*\(/i);
       if (!tableNameMatch) throw new Error("Invalid CREATE TABLE syntax");
-      
+
       const tableName = tableNameMatch[1];
       const columnsSection = sql.slice(sql.indexOf('(') + 1, sql.lastIndexOf(')'));
-      
+
       const columnDefinitions = columnsSection.split(',').map(col => col.trim());
       const columns: Column[] = columnDefinitions.map(colDef => {
         const parts = colDef.split(/\s+/);
@@ -47,7 +57,7 @@ export default function Playground() {
           name: parts[0],
           type: parts[1],
           nullable: !colDef.toLowerCase().includes('not null'),
-          isPrimary: colDef.toLowerCase().includes('primary key')
+          isPrimary: colDef.toLowerCase().includes('primary key'),
         };
       });
 
@@ -56,7 +66,7 @@ export default function Playground() {
         name: tableName,
         definition: sql,
         columns,
-        data: []
+        data: [],
       };
     } catch (error) {
       return null;
@@ -79,7 +89,6 @@ export default function Playground() {
       const lowerSQL = sql.toLowerCase();
       setQueryHistory([...queryHistory, sql]);
 
-      // Handle different types of SQL queries
       if (lowerSQL.startsWith('select')) {
         handleSelect(sql);
       } else if (lowerSQL.startsWith('insert')) {
@@ -89,15 +98,15 @@ export default function Playground() {
       } else if (lowerSQL.startsWith('delete')) {
         handleDelete(sql);
       } else {
-        setQueryResult({ 
-          success: false, 
-          error: 'Unsupported query type. Please use SELECT, INSERT, UPDATE, or DELETE.'
+        setQueryResult({
+          success: false,
+          error: 'Unsupported query type. Please use SELECT, INSERT, UPDATE, or DELETE.',
         });
       }
     } catch (error) {
-      setQueryResult({ 
-        success: false, 
-        error: 'Error executing query: ' + (error as Error).message 
+      setQueryResult({
+        success: false,
+        error: 'Error executing query: ' + (error as Error).message,
       });
     }
   };
@@ -105,21 +114,20 @@ export default function Playground() {
   const handleSelect = (sql: string) => {
     const tableName = sql.match(/from\s+(\w+)/i)?.[1];
     const table = tables.find(t => t.name.toLowerCase() === tableName?.toLowerCase());
-    
+
     if (!table) {
       setQueryResult({ success: false, error: 'Table not found' });
       return;
     }
 
-    setQueryResult({ 
-      success: true, 
+    setQueryResult({
+      success: true,
       data: table.data,
-      fields: table.columns.map(col => col.name)
+      fields: table.columns.map(col => col.name),
     });
   };
 
   const handleInsert = (sql: string) => {
-    // Basic INSERT parsing - this is a simplified version
     const matches = sql.match(/INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)/i);
     if (!matches) {
       setQueryResult({ success: false, error: 'Invalid INSERT syntax' });
@@ -128,7 +136,7 @@ export default function Playground() {
 
     const [_, tableName, columns, values] = matches;
     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-    
+
     if (!table) {
       setQueryResult({ success: false, error: 'Table not found' });
       return;
@@ -136,7 +144,7 @@ export default function Playground() {
 
     const columnNames = columns.split(',').map(c => c.trim());
     const valueList = values.split(',').map(v => v.trim().replace(/'/g, ''));
-    
+
     const newRow: any = {};
     columnNames.forEach((col, idx) => {
       newRow[col] = valueList[idx];
@@ -144,19 +152,18 @@ export default function Playground() {
 
     const updatedTable = {
       ...table,
-      data: [...table.data, newRow]
+      data: [...table.data, newRow],
     };
 
-    setTables(tables.map(t => t.id === table.id ? updatedTable : t));
-    setQueryResult({ 
-      success: true, 
+    setTables(tables.map(t => (t.id === table.id ? updatedTable : t)));
+    setQueryResult({
+      success: true,
       data: [newRow],
-      fields: columnNames
+      fields: columnNames,
     });
   };
 
   const handleUpdate = (sql: string) => {
-    // Simplified UPDATE handling
     const tableNameMatch = sql.match(/UPDATE\s+(\w+)\s+SET/i);
     if (!tableNameMatch) {
       setQueryResult({ success: false, error: 'Invalid UPDATE syntax' });
@@ -165,23 +172,60 @@ export default function Playground() {
 
     const tableName = tableNameMatch[1];
     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-    
+
     if (!table) {
       setQueryResult({ success: false, error: 'Table not found' });
       return;
     }
 
-    // In a real implementation, you would parse the SET and WHERE clauses
-    // For this demo, we'll just acknowledge the update
-    setQueryResult({ 
-      success: true, 
-      data: [],
-      fields: table.columns.map(col => col.name)
+    const setClause = sql.match(/SET\s+(.*?)\s+WHERE/i)?.[1];
+    if (!setClause) {
+      setQueryResult({ success: false, error: 'Invalid SET clause' });
+      return;
+    }
+
+    const whereClause = sql.match(/WHERE\s+(.*)/i)?.[1];
+    if (!whereClause) {
+      setQueryResult({ success: false, error: 'Invalid WHERE clause' });
+      return;
+    }
+
+    const updatedData = table.data.map(row => {
+      const matchesCondition = whereClause.split('AND').every(condition => {
+        const [col, value] = condition.split('=').map(s => s.trim());
+        return row[col] === value.replace(/'/g, '');
+      });
+
+      if (matchesCondition) {
+        setClause.split(',').forEach(assignment => {
+          const [col, value] = assignment.split('=').map(s => s.trim());
+          row[col] = value.replace(/'/g, '');
+        });
+      }
+
+      return row;
+    });
+
+    const updatedTable = {
+      ...table,
+      data: updatedData,
+    };
+
+    setTables(tables.map(t => (t.id === table.id ? updatedTable : t)));
+    setQueryResult({
+      success: true,
+      data: updatedData.filter(row => {
+        const matchesCondition = whereClause.split('AND').every(condition => {
+          const [col, value] = condition.split('=').map(s => s.trim());
+          return row[col] === value.replace(/'/g, '');
+        });
+        return matchesCondition;
+      }),
+      fields: table.columns.map(col => col.name),
     });
   };
 
   const handleDelete = (sql: string) => {
-    // Simplified DELETE handling
     const tableNameMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
     if (!tableNameMatch) {
       setQueryResult({ success: false, error: 'Invalid DELETE syntax' });
@@ -190,28 +234,45 @@ export default function Playground() {
 
     const tableName = tableNameMatch[1];
     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-    
+
     if (!table) {
       setQueryResult({ success: false, error: 'Table not found' });
       return;
     }
 
-    // In a real implementation, you would parse the WHERE clause
-    // For this demo, we'll just acknowledge the delete
-    setQueryResult({ 
-      success: true, 
+    const whereClause = sql.match(/WHERE\s+(.*)/i)?.[1];
+    if (!whereClause) {
+      setQueryResult({ success: false, error: 'Invalid WHERE clause' });
+      return;
+    }
+
+    const updatedData = table.data.filter(row => {
+      return !whereClause.split('AND').every(condition => {
+        const [col, value] = condition.split('=').map(s => s.trim());
+        return row[col] === value.replace(/'/g, '');
+      });
+    });
+
+    const updatedTable = {
+      ...table,
+      data: updatedData,
+    };
+
+    setTables(tables.map(t => (t.id === table.id ? updatedTable : t)));
+    setQueryResult({
+      success: true,
       data: [],
-      fields: table.columns.map(col => col.name)
+      fields: table.columns.map(col => col.name),
     });
   };
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex-1 px-8 py-6 min-h-0">
+    <div className="h-screen flex flex-col pt-16">
+      <div className="flex-1 px-8 py-6 min-h-0 overflow-hidden">
         <div className="flex gap-8 h-full">
           {/* Left Sidebar - Tables List */}
           <div className="w-1/4 flex flex-col min-h-0">
-            <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0">
+            <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold">Tables</h2>
                 <button
@@ -221,7 +282,7 @@ export default function Playground() {
                   <Plus className="w-5 h-5" />
                 </button>
               </div>
-              
+
               <div className="overflow-y-auto flex-1 min-h-0 pr-4">
                 <div className="space-y-3">
                   {tables.map(table => (
@@ -246,9 +307,9 @@ export default function Playground() {
           </div>
 
           {/* Right Content Area */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {selectedTable ? (
-              <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0">
+              <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="overflow-y-auto flex-1 min-h-0 pr-4">
                   {/* Table Definition */}
                   <div className="mb-8">
@@ -278,7 +339,7 @@ export default function Playground() {
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {[
                                   col.isPrimary && 'PRIMARY KEY',
-                                  !col.nullable && 'NOT NULL'
+                                  !col.nullable && 'NOT NULL',
                                 ].filter(Boolean).join(', ')}
                               </td>
                             </tr>
@@ -380,7 +441,6 @@ export default function Playground() {
       </div>
 
       {/* Create Table Modal */}
-      {/* Create Table Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
@@ -433,383 +493,4 @@ export default function Playground() {
     </div>
   );
 }
-// ..................................................................................................................................................................................
 
-
-// import { useState } from 'react';
-// import { Database, Plus } from 'lucide-react';
-// import SQLEditor from '../components/SQLEditor';
-
-// interface Column {
-//   name: string;
-//   type: string;
-//   nullable: boolean;
-//   isPrimary: boolean;
-// }
-
-// interface Table {
-//   id: string;
-//   name: string;
-//   definition: string;
-//   columns: Column[];
-//   data: any[];
-// }
-
-// interface QueryResult {
-//   success: boolean;
-//   data?: any[];
-//   error?: string;
-//   fields?: string[];
-// }
-
-// export default function Playground() {
-//   const [tables, setTables] = useState<Table[]>([]);
-//   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-//   const [showCreateModal, setShowCreateModal] = useState(false);
-//   const [newTableDefinition, setNewTableDefinition] = useState('');
-//   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-//   const [queryHistory, setQueryHistory] = useState<string[]>([]);
-
-//   const parseCreateTableSQL = (sql: string): Table | null => {
-//     try {
-//       const tableNameMatch = sql.match(/CREATE\s+TABLE\s+(\w+)\s*\(/i);
-//       if (!tableNameMatch) throw new Error("Invalid CREATE TABLE syntax");
-
-//       const tableName = tableNameMatch[1];
-//       const columnsSection = sql.slice(sql.indexOf('(') + 1, sql.lastIndexOf(')'));
-
-//       const columnDefinitions = columnsSection.split(',').map(col => col.trim());
-//       const columns: Column[] = columnDefinitions.map(colDef => {
-//         const parts = colDef.split(/\s+/);
-//         return {
-//           name: parts[0],
-//           type: parts[1],
-//           nullable: !colDef.toLowerCase().includes('not null'),
-//           isPrimary: colDef.toLowerCase().includes('primary key')
-//         };
-//       });
-
-//       return {
-//         id: Date.now().toString(),
-//         name: tableName,
-//         definition: sql,
-//         columns,
-//         data: []
-//       };
-//     } catch (error) {
-//       return null;
-//     }
-//   };
-
-//   const handleCreateTable = () => {
-//     const newTable = parseCreateTableSQL(newTableDefinition);
-//     if (newTable) {
-//       setTables([...tables, newTable]);
-//       setShowCreateModal(false);
-//       setNewTableDefinition('');
-//     } else {
-//       alert('Invalid table definition. Please check your SQL syntax.');
-//     }
-//   };
-
-//   const executeQuery = (sql: string) => {
-//     try {
-//       const lowerSQL = sql.toLowerCase();
-//       setQueryHistory([...queryHistory, sql]);
-
-//       if (lowerSQL.startsWith('select')) {
-//         handleSelect(sql);
-//       } else if (lowerSQL.startsWith('insert')) {
-//         handleInsert(sql);
-//       } else if (lowerSQL.startsWith('update')) {
-//         handleUpdate(sql);
-//       } else if (lowerSQL.startsWith('delete')) {
-//         handleDelete(sql);
-//       } else {
-//         setQueryResult({
-//           success: false,
-//           error: 'Unsupported query type. Please use SELECT, INSERT, UPDATE, or DELETE.'
-//         });
-//       }
-//     } catch (error) {
-//       setQueryResult({
-//         success: false,
-//         error: 'Error executing query: ' + (error as Error).message
-//       });
-//     }
-//   };
-
-//   const handleSelect = (sql: string) => {
-//     const tableName = sql.match(/from\s+(\w+)/i)?.[1];
-//     const table = tables.find(t => t.name.toLowerCase() === tableName?.toLowerCase());
-
-//     if (!table) {
-//       setQueryResult({ success: false, error: 'Table not found' });
-//       return;
-//     }
-
-//     setQueryResult({
-//       success: true,
-//       data: table.data,
-//       fields: table.columns.map(col => col.name)
-//     });
-//   };
-
-//   const handleInsert = (sql: string) => {
-//     const matches = sql.match(/INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)/i);
-//     if (!matches) {
-//       setQueryResult({ success: false, error: 'Invalid INSERT syntax' });
-//       return;
-//     }
-
-//     const [_, tableName, columns, values] = matches;
-//     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-
-//     if (!table) {
-//       setQueryResult({ success: false, error: 'Table not found' });
-//       return;
-//     }
-
-//     const columnNames = columns.split(',').map(c => c.trim());
-//     const valueList = values.split(',').map(v => v.trim().replace(/'/g, ''));
-
-//     const newRow: any = {};
-//     columnNames.forEach((col, idx) => {
-//       newRow[col] = valueList[idx];
-//     });
-
-//     const updatedTable = {
-//       ...table,
-//       data: [...table.data, newRow]
-//     };
-
-//     setTables(tables.map(t => t.id === table.id ? updatedTable : t));
-//     setQueryResult({
-//       success: true,
-//       data: [newRow],
-//       fields: columnNames
-//     });
-//   };
-
-//   const handleUpdate = (sql: string) => {
-//     const tableNameMatch = sql.match(/UPDATE\s+(\w+)\s+SET/i);
-//     if (!tableNameMatch) {
-//       setQueryResult({ success: false, error: 'Invalid UPDATE syntax' });
-//       return;
-//     }
-
-//     const tableName = tableNameMatch[1];
-//     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-
-//     if (!table) {
-//       setQueryResult({ success: false, error: 'Table not found' });
-//       return;
-//     }
-
-//     // Simplified update logic
-//     setQueryResult({
-//       success: true,
-//       data: [],
-//       fields: table.columns.map(col => col.name)
-//     });
-//   };
-
-//   const handleDelete = (sql: string) => {
-//     const tableNameMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
-//     if (!tableNameMatch) {
-//       setQueryResult({ success: false, error: 'Invalid DELETE syntax' });
-//       return;
-//     }
-
-//     const tableName = tableNameMatch[1];
-//     const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-
-//     if (!table) {
-//       setQueryResult({ success: false, error: 'Table not found' });
-//       return;
-//     }
-
-//     // Simplified delete logic
-//     setQueryResult({
-//       success: true,
-//       data: [],
-//       fields: table.columns.map(col => col.name)
-//     });
-//   };
-
-//   return (
-//     <div className="h-screen flex flex-col">
-//       <div className="flex-1 px-8 py-6 min-h-0">
-//         <div className="flex gap-8 h-full">
-//           {/* Left Sidebar - Tables List */}
-//           <div className="w-1/4 flex flex-col min-h-0">
-//             <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0">
-//               <div className="flex justify-between items-center mb-6">
-//                 <h2 className="text-xl font-semibold">Tables</h2>
-//                 <button
-//                   onClick={() => setShowCreateModal(true)}
-//                   className="p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-//                 >
-//                   <Plus className="w-5 h-5" />
-//                 </button>
-//               </div>
-
-//               <div className="overflow-y-auto flex-1 min-h-0 pr-4">
-//                 <div className="space-y-3">
-//                   {tables.map(table => (
-//                     <button
-//                       key={table.id}
-//                       onClick={() => setSelectedTable(table)}
-//                       className={`w-full text-left p-4 rounded-lg border transition
-//                         ${selectedTable?.id === table.id
-//                           ? 'border-indigo-500 bg-indigo-50'
-//                           : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
-//                         }`}
-//                     >
-//                       <div className="flex items-center justify-between">
-//                         <span className="font-medium">{table.name}</span>
-//                         <Database className="w-4 h-4 text-gray-400" />
-//                       </div>
-//                     </button>
-//                   ))}
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-
-//           {/* Right Content Area */}
-//           <div className="flex-1 flex flex-col min-h-0">
-//             {selectedTable ? (
-//               <div className="bg-white rounded-lg shadow-md p-6 flex-1 flex flex-col min-h-0">
-//                 <div className="overflow-y-auto flex-1 min-h-0 pr-4">
-//                   {/* Table Definition */}
-//                   <div className="mb-8">
-//                     <h3 className="text-lg font-semibold mb-3">Table Definition</h3>
-//                     <pre className="bg-gray-800 text-white p-4 rounded-lg overflow-x-auto">
-//                       {selectedTable.definition}
-//                     </pre>
-//                   </div>
-
-//                   {/* Table Structure */}
-//                   <div className="mb-8">
-//                     <h3 className="text-lg font-semibold mb-3">Table Structure</h3>
-//                     <div className="overflow-x-auto">
-//                       <table className="min-w-full divide-y divide-gray-200">
-//                         <thead className="bg-gray-50">
-//                           <tr>
-//                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
-//                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-//                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Constraints</th>
-//                           </tr>
-//                         </thead>
-//                         <tbody className="bg-white divide-y divide-gray-200">
-//                           {selectedTable.columns.map((col, idx) => (
-//                             <tr key={idx}>
-//                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{col.name}</td>
-//                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{col.type}</td>
-//                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                                 {[
-//                                   col.isPrimary && 'PRIMARY KEY',
-//                                   !col.nullable && 'NOT NULL'
-//                                 ].filter(Boolean).join(', ')}
-//                               </td>
-//                             </tr>
-//                           ))}
-//                         </tbody>
-//                       </table>
-//                     </div>
-//                   </div>
-
-//                   {/* Query Editor */}
-//                   <div className="mb-8">
-//                     <h3 className="text-lg font-semibold mb-3">SQL Query</h3>
-//                     <div className="mb-4 text-sm text-gray-600">
-//                       Available fields: {selectedTable.columns.map(col => col.name).join(', ')}
-//                     </div>
-//                     <SQLEditor
-//                       onExecute={executeQuery}
-//                       placeholder={`Enter your SQL query for ${selectedTable.name}...`}
-//                     />
-//                   </div>
-
-//                   {/* Query Results */}
-//                   {queryResult && (
-//                     <div className="mb-8">
-//                       <h3 className="text-lg font-semibold mb-3">Query Results</h3>
-//                       {queryResult.error ? (
-//                         <div className="p-4 bg-red-50 text-red-700 rounded-lg">
-//                           {queryResult.error}
-//                         </div>
-//                       ) : (
-//                         <div className="overflow-x-auto">
-//                           <table className="min-w-full divide-y divide-gray-200">
-//                             <thead className="bg-gray-50">
-//                               <tr>
-//                                 {queryResult.fields?.map(field => (
-//                                   <th key={field} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-//                                     {field}
-//                                   </th>
-//                                 ))}
-//                               </tr>
-//                             </thead>
-//                             <tbody className="bg-white divide-y divide-gray-200">
-//                               {queryResult.data?.map((row, idx) => (
-//                                 <tr key={idx}>
-//                                   {queryResult.fields?.map(field => (
-//                                     <td key={field} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-//                                       {row[field]?.toString()}
-//                                     </td>
-//                                   ))}
-//                                 </tr>
-//                               ))}
-//                             </tbody>
-//                           </table>
-//                         </div>
-//                       )}
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-//             ) : (
-//               <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-center h-full">
-//                 <div className="text-center text-gray-500">
-//                   <Database className="w-12 h-12 mx-auto mb-4" />
-//                   <p className="text-lg">Select a table to view details and run queries</p>
-//                 </div>
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </div>
-
-//       {/* Create Table Modal */}
-//       {showCreateModal && (
-//         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-//           <div className="bg-white rounded-lg shadow-md p-6 w-1/2">
-//             <h2 className="text-xl font-semibold mb-6">Create Table</h2>
-//             <textarea
-//               value={newTableDefinition}
-//               onChange={(e) => setNewTableDefinition(e.target.value)}
-//               className="w-full p-4 border border-gray-300 rounded-lg mb-6"
-//               rows={6}
-//               placeholder="Enter CREATE TABLE SQL statement..."
-//             />
-//             <div className="flex justify-end">
-//               <button
-//                 onClick={() => setShowCreateModal(false)}
-//                 className="mr-4 px-4 py-2 text-gray-600 hover:text-gray-800"
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 onClick={handleCreateTable}
-//                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-//               >
-//                 Create Table
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
