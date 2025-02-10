@@ -1,6 +1,5 @@
-import React from 'react';
-import { Database, BookOpen, Code2, Layout } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Database, BookOpen, Code2, Layout } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 export default function Navbar() {
   const location = useLocation();
@@ -20,7 +19,7 @@ export default function Navbar() {
             <Link
               to="/theory"
               className={`flex items-center space-x-1 hover:text-indigo-200 transition ${
-                isActive('/theory') ? 'text-indigo-200' : ''
+                isActive("/theory") ? "text-indigo-200" : ""
               }`}
             >
               <BookOpen className="w-5 h-5" />
@@ -30,7 +29,7 @@ export default function Navbar() {
             <Link
               to="/practice"
               className={`flex items-center space-x-1 hover:text-indigo-200 transition ${
-                isActive('/practice') ? 'text-indigo-200' : ''
+                isActive("/practice") ? "text-indigo-200" : ""
               }`}
             >
               <Code2 className="w-5 h-5" />
@@ -40,7 +39,7 @@ export default function Navbar() {
             <Link
               to="/playground"
               className={`flex items-center space-x-1 hover:text-indigo-200 transition ${
-                isActive('/playground') ? 'text-indigo-200' : ''
+                isActive("/playground") ? "text-indigo-200" : ""
               }`}
             >
               <Layout className="w-5 h-5" />
