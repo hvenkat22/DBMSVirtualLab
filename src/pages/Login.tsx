@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Database } from "lucide-react";
+import { Link } from "react-router-dom";
+
+
 
 export default function Login() {
+  const isActive = (path) => location.pathname === path;
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
@@ -24,6 +30,27 @@ export default function Login() {
   };
 
   return (
+    <>
+    <nav className="fixed w-full bg-indigo-600 text-white shadow-lg z-50">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <Link to="/" className="flex items-center space-x-2">
+              <Database className="w-8 h-8" />
+              <span className="font-bold text-xl">DBMS Virtual Lab</span>
+            </Link>
+            <div className="flex space-x-8 items-center">
+              <Link
+                to="/"
+                className={`hover:text-indigo-200 transition ${
+                  isActive("/") ? "text-indigo-200" : ""
+                }`}
+              >
+                Home
+              </Link>
+            </div>
+          </div>
+         </div>
+      </nav>
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded shadow-md w-96">
         <h2 className="text-2xl font-bold mb-4 text-indigo-600">Login</h2>
@@ -39,5 +66,6 @@ export default function Login() {
         </button>
       </div>
     </div>
+    </>
   );
 }

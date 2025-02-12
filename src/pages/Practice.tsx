@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import SQLEditor from '../components/SQLEditor';
 import { Exercise } from '../types';
-import { BookOpen, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import { Link } from "react-router-dom";
+import { Database, BookOpen, Code2, Layout, LogOut } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+
+
 
 const tableSchemas = {
   employees: `
@@ -581,6 +587,9 @@ const exercises: Exercise[] = [
 ];
 
 export default function Practice() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isActive = (path) => location.pathname === path;
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [showHint, setShowHint] = useState(false);
 
@@ -589,10 +598,66 @@ export default function Practice() {
     const isCorrect = query.trim().toLowerCase() === selectedExercise.expectedResult.toLowerCase();
     alert(isCorrect ? 'Correct!' : 'Try again!');
   };
+  const handleLogout = async () => {
+    await fetch("http://localhost:5000/logout", { method: "POST" });
+    localStorage.removeItem("user");
+    navigate("/");
+  };
+
+
 
   const categories = Array.from(new Set(exercises.map(ex => ex.category)));
 
   return (
+    <>
+    <nav className="fixed w-full bg-indigo-600 text-white shadow-lg z-50">
+    <div className="max-w-7xl mx-auto px-4">
+      <div className="flex items-center justify-between h-16">
+        <Link to="/" className="flex items-center space-x-2">
+          <Database className="w-8 h-8" />
+          <span className="font-bold text-xl">DBMS Virtual Lab</span>
+        </Link>
+        <div className="flex space-x-8 items-center">
+          <Link
+            to="/"
+            className={`hover:text-indigo-200 transition ${isActive("/") ? "text-indigo-200" : ""}`}
+          >
+            Home
+          </Link>
+            <>
+              <Link
+                to="/theory"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/theory") ? "text-indigo-200" : ""}`}
+              >
+                <BookOpen className="w-5 h-5" />
+                <span>Theory</span>
+              </Link>
+              <Link
+                to="/practice"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/practice") ? "text-indigo-200" : ""}`}
+              >
+                <Code2 className="w-5 h-5" />
+                <span>Practice</span>
+              </Link>
+              <Link
+                to="/playground"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/playground") ? "text-indigo-200" : ""}`}
+              >
+                <Layout className="w-5 h-5" />
+                <span>Playground</span>
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-1 bg-red-600 px-3 py-2 rounded-md text-white hover:bg-red-700 transition"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </>
+        </div>
+      </div>
+    </div>
+  </nav>
     <div className="h-screen flex flex-col">
       {/* Header - fixed height */}
       <div className="flex items-center space-x-3 p-6 border-b">
@@ -709,5 +774,6 @@ export default function Practice() {
         </div>
       </div>
     </div>
+    </>
   );
 }

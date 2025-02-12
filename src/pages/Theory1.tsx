@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronRight, BookOpen, Brain, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, BookOpen, Code2, Layout, LogOut } from "lucide-react";
+import { useLocation, useNavigate, Link } from "react-router-dom";
+import { ChevronRight, Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { Topic, Subtopic, QuizItem } from '../Theory/GettingStarted/dbms';
 import createIntroToDBMSSubtopic from '../Theory/GettingStarted/IntroToDBMS';
 import createFileSystemVsDBMSSubtopic from '../Theory/GettingStarted/FileSystemVsDBMS';
@@ -602,6 +604,9 @@ const Quiz: React.FC<{ questions: QuizItem[] }> = ({ questions }) => {
 export default function Theory() {
   const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isActive = (path) => location.pathname === path;
 
   console.log('Expanded Topics:', expandedTopics);
   console.log('Selected Subtopic:', selectedSubtopic);
@@ -619,8 +624,63 @@ export default function Theory() {
       prev.includes(topicId) ? prev.filter((id) => id !== topicId) : [...prev, topicId]
     );
   };
+  const handleLogout = async () => {
+    await fetch("http://localhost:5000/logout", { method: "POST" });
+    localStorage.removeItem("user");
+    navigate("/");
+  };
+
 
   return (
+    <>
+    <nav className="fixed w-full bg-indigo-600 text-white shadow-lg z-50">
+    <div className="max-w-7xl mx-auto px-4">
+      <div className="flex items-center justify-between h-16">
+        <Link to="/" className="flex items-center space-x-2">
+          <Database className="w-8 h-8" />
+          <span className="font-bold text-xl">DBMS Virtual Lab</span>
+        </Link>
+        <div className="flex space-x-8 items-center">
+          <Link
+            to="/"
+            className={`hover:text-indigo-200 transition ${isActive("/") ? "text-indigo-200" : ""}`}
+          >
+            Home
+          </Link>
+            <>
+              <Link
+                to="/theory"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/theory") ? "text-indigo-200" : ""}`}
+              >
+                <BookOpen className="w-5 h-5" />
+                <span>Theory</span>
+              </Link>
+              <Link
+                to="/practice"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/practice") ? "text-indigo-200" : ""}`}
+              >
+                <Code2 className="w-5 h-5" />
+                <span>Practice</span>
+              </Link>
+              <Link
+                to="/playground"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/playground") ? "text-indigo-200" : ""}`}
+              >
+                <Layout className="w-5 h-5" />
+                <span>Playground</span>
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-1 bg-red-600 px-3 py-2 rounded-md text-white hover:bg-red-700 transition"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </>
+        </div>
+      </div>
+    </div>
+  </nav>
     <div className="min-h-screen">
       <Sidebar
         topics={topics}
@@ -631,5 +691,6 @@ export default function Theory() {
       />
       <ContentArea selectedTopic={currentSubtopic || null} topicQuizzes={currentQuiz} />
     </div>
+    </>
   );
 }

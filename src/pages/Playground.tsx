@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Database, Plus, X } from 'lucide-react';
+import { Link } from "react-router-dom";
+import {Plus, X } from 'lucide-react';
 import SQLEditor from '../components/SQLEditor';
+import { Database, BookOpen, Code2, Layout, LogOut } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+
 
 interface Column {
   name: string;
@@ -25,6 +30,9 @@ interface QueryResult {
 }
 
 export default function Playground() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isActive = (path) => location.pathname === path;
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -110,22 +118,112 @@ export default function Playground() {
       });
     }
   };
+  const handleLogout = async () => {
+    await fetch("http://localhost:5000/logout", { method: "POST" });
+    localStorage.removeItem("user");
+    navigate("/");
+  };
 
   const handleSelect = (sql: string) => {
-    const tableName = sql.match(/from\s+(\w+)/i)?.[1];
-    const table = tables.find(t => t.name.toLowerCase() === tableName?.toLowerCase());
+    try {
+        const match = sql.match(/select\s+(.*?)\s+from\s+(\w+)(?:\s+join\s+(\w+)\s+on\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+))?(?:\s+where\s+(.+))?/i);
+        if (!match) {
+            setQueryResult({ success: false, error: 'Invalid SQL query' });
+            return;
+        }
 
-    if (!table) {
-      setQueryResult({ success: false, error: 'Table not found' });
-      return;
+        const [, columns, tableName, joinTable, leftTable, leftColumn, rightTable, rightColumn, whereClause] = match;
+        let table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
+        let joinData = joinTable ? tables.find(t => t.name.toLowerCase() === joinTable.toLowerCase()) : null;
+
+        if (!table) {
+            setQueryResult({ success: false, error: 'Table not found' });
+            return;
+        }
+
+        let selectedColumns = columns === '*' ? table.columns.map(col => col.name) : columns.split(',').map(col => col.trim());
+        let filteredData = table.data;
+
+        // Handle JOIN
+        if (joinData) {
+            filteredData = filteredData.map(row => {
+                const matchingRow = joinData!.data.find(jRow => jRow[rightColumn] === row[leftColumn]);
+                return matchingRow ? { ...row, ...matchingRow } : row;
+            });
+        }
+
+        // Handle WHERE conditions
+        if (whereClause) {
+            let conditions = whereClause.split(/\s+(AND|OR)\s+/i); // Split on AND/OR (case insensitive)
+            filteredData = filteredData.filter(row => {
+                let conditionResults: boolean[] = [];
+                let currentOp = 'AND';
+
+                for (let i = 0; i < conditions.length; i++) {
+                    const condition = conditions[i].trim();
+
+                    if (condition.toUpperCase() === 'AND' || condition.toUpperCase() === 'OR') {
+                        currentOp = condition.toUpperCase();
+                        continue;
+                    }
+
+                    const conditionMatch = condition.match(/(\w+)\s*(=|!=|>|<|>=|<=)\s*(.+)/);
+                    if (!conditionMatch) continue;
+
+                    let [, column, operator, value] = conditionMatch;
+
+                    if (!(column in row)) {
+                        conditionResults.push(false);
+                        continue;
+                    }
+
+                    // Convert value to correct type (number if applicable)
+                    if (!isNaN(Number(value))) {
+                        value = Number(value);
+                    } else if (value.startsWith("'") && value.endsWith("'")) {
+                        value = value.slice(1, -1);
+                    }
+
+                    let result = false;
+                    switch (operator) {
+                        case '=': result = row[column] == value; break;
+                        case '!=': result = row[column] != value; break;
+                        case '>': result = row[column] > value; break;
+                        case '<': result = row[column] < value; break;
+                        case '>=': result = row[column] >= value; break;
+                        case '<=': result = row[column] <= value; break;
+                    }
+
+                    conditionResults.push(result);
+                }
+
+                // Evaluate combined conditions
+                return conditionResults.reduce((acc, val, index) => {
+                    if (index === 0) return val;
+                    return currentOp === 'AND' ? acc && val : acc || val;
+                }, true);
+            });
+        }
+
+        // Prepare final result
+        setQueryResult({
+            success: true,
+            data: filteredData.map(row => {
+                let selectedRow: any = {};
+                selectedColumns.forEach(col => {
+                    if (row.hasOwnProperty(col)) {
+                        selectedRow[col] = row[col];
+                    }
+                });
+                return selectedRow;
+            }),
+            fields: selectedColumns,
+        });
+    } catch (error) {
+        setQueryResult({ success: false, error: 'Error processing SQL query' });
     }
+};
 
-    setQueryResult({
-      success: true,
-      data: table.data,
-      fields: table.columns.map(col => col.name),
-    });
-  };
 
   const handleInsert = (sql: string) => {
     const matches = sql.match(/INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)/i);
@@ -267,6 +365,55 @@ export default function Playground() {
   };
 
   return (
+    <>
+    <nav className="fixed w-full bg-indigo-600 text-white shadow-lg z-50">
+    <div className="max-w-7xl mx-auto px-4">
+      <div className="flex items-center justify-between h-16">
+        <Link to="/" className="flex items-center space-x-2">
+          <Database className="w-8 h-8" />
+          <span className="font-bold text-xl">DBMS Virtual Lab</span>
+        </Link>
+        <div className="flex space-x-8 items-center">
+          <Link
+            to="/"
+            className={`hover:text-indigo-200 transition ${isActive("/") ? "text-indigo-200" : ""}`}
+          >
+            Home
+          </Link>
+            <>
+              <Link
+                to="/theory"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/theory") ? "text-indigo-200" : ""}`}
+              >
+                <BookOpen className="w-5 h-5" />
+                <span>Theory</span>
+              </Link>
+              <Link
+                to="/practice"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/practice") ? "text-indigo-200" : ""}`}
+              >
+                <Code2 className="w-5 h-5" />
+                <span>Practice</span>
+              </Link>
+              <Link
+                to="/playground"
+                className={`flex items-center space-x-1 hover:text-indigo-200 transition ${isActive("/playground") ? "text-indigo-200" : ""}`}
+              >
+                <Layout className="w-5 h-5" />
+                <span>Playground</span>
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-1 bg-red-600 px-3 py-2 rounded-md text-white hover:bg-red-700 transition"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </>
+        </div>
+      </div>
+    </div>
+  </nav>
     <div className="h-screen flex flex-col pt-16">
       <div className="flex-1 px-8 py-6 min-h-0 overflow-hidden">
         <div className="flex gap-8 h-full">
@@ -491,6 +638,7 @@ export default function Playground() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

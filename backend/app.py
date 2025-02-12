@@ -2,23 +2,18 @@ from flask import Flask, request, jsonify, session
 from models import db, User
 from flask_cors import CORS 
 
-# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-# Configure database
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Initialize the database
 db.init_app(app)
 CORS(app)
 
-# Create database tables
 with app.app_context():
     db.create_all()
 
-# User Registration Route
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -32,7 +27,6 @@ def register():
 
     return jsonify({"message": "User registered successfully!"})
 
-# User Login Route
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
@@ -44,12 +38,11 @@ def login():
 
     return jsonify({"error": "Invalid credentials"}), 401
 
-# User Logout Route
 @app.route("/logout", methods=["POST"])
 def logout():
     session.pop("user", None)
     return jsonify({"message": "Logged out successfully"})
 
-# Run the app
+
 if __name__ == "__main__":
     app.run(debug=True)
