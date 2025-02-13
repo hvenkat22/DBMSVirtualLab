@@ -1,6 +1,8 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, send_file
 from models import db, User
 from flask_cors import CORS 
+import io
+import csv
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -43,6 +45,23 @@ def logout():
     session.pop("user", None)
     return jsonify({"message": "Logged out successfully"})
 
+@app.route("/download_users", methods=["GET"])
+def download_users():
+    users = User.query.with_entities(User.id, User.reg_no, User.name, User.institution).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Reg No", "Name", "Institution"])  # CSV Headers
+    writer.writerows(users)
+
+    output.seek(0)
+
+    return send_file(
+        io.BytesIO(output.getvalue().encode()),  # Convert to bytes
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="users.csv"
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

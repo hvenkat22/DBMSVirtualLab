@@ -10,6 +10,22 @@ export default function Homepage() {
   const isActive = (path) => location.pathname === path;
 
   const [user, setUser] = useState(localStorage.getItem("user"));
+  const handleDownloadUsers = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:5000/download_users");
+      if (!response.ok) throw new Error("Failed to download file");
+  
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "users.csv";
+      link.click();
+    } catch (error) {
+      console.error("Download error:", error);
+    }
+  };
+  
+  
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -82,6 +98,12 @@ export default function Homepage() {
                     <LogOut className="w-5 h-5" />
                     <span>Logout</span>
                   </button>
+                  <button 
+  onClick={handleDownloadUsers} 
+  className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition"
+>
+  Download Users
+</button>
                 </>
               )}
             </div>

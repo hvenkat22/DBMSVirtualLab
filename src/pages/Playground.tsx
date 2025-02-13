@@ -126,101 +126,330 @@ export default function Playground() {
 
   const handleSelect = (sql: string) => {
     try {
-        const match = sql.match(/select\s+(.*?)\s+from\s+(\w+)(?:\s+join\s+(\w+)\s+on\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+))?(?:\s+where\s+(.+))?/i);
-        if (!match) {
-            setQueryResult({ success: false, error: 'Invalid SQL query' });
-            return;
-        }
+        // Updated regex to match all types of joins
+        console.log(sql)
+        const regex = /select\s+(.*?)\s+from\s+(\w+)(?:\s+(left|right|full|inner|natural)?\s*(?:outer\s+)?join\s+(\w+)(?:\s+(?:on|using)\s+(?:\(?\s*(\w+)(?:\.(\w+))?\s*=\s*(\w+)(?:\.(\w+))?\s*\)?|\(([^)]+)\))?)?)?\s*(?:where\s+([^;]+))?(?:\s*group\s+by\s+([\w, ]+))?(?:\s*having\s+(.+))?/i;
+        const match = sql.match(regex)
+        console.log(match)             
+        
 
-        const [, columns, tableName, joinTable, leftTable, leftColumn, rightTable, rightColumn, whereClause] = match;
+if (!match) {
+    setQueryResult({ success: false, error: "Invalid SQL query" });
+    return;
+}
+
+const [, columns, tableName, joinType, joinTable, leftTable, leftColumn, rightTable, rightColumn, usingColumns, whereClause = '', groupByClause, havingClause] = match;
+
         let table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
         let joinData = joinTable ? tables.find(t => t.name.toLowerCase() === joinTable.toLowerCase()) : null;
 
         if (!table) {
-            setQueryResult({ success: false, error: 'Table not found' });
+            setQueryResult({ success: false, error: "Table not found" });
             return;
         }
 
-        let selectedColumns = columns === '*' ? table.columns.map(col => col.name) : columns.split(',').map(col => col.trim());
-        let filteredData = table.data;
+        // Determine selected columns
+        let selectedColumns = columns.trim() === '*' 
+            ? table.columns.map(col => col.name)
+            : columns.split(',').map(col => col.trim());
 
-        // Handle JOIN
+        // Start with a deep copy of the table data
+        let filteredData = JSON.parse(JSON.stringify(table.data));
+
+        // Handle different types of JOINs
         if (joinData) {
-            filteredData = filteredData.map(row => {
-                const matchingRow = joinData!.data.find(jRow => jRow[rightColumn] === row[leftColumn]);
-                return matchingRow ? { ...row, ...matchingRow } : row;
-            });
-        }
+            const normalizedJoinType = (joinType || 'inner').toLowerCase();
+            
+            // Function to combine rows based on join condition
+            const combineRows = (leftRow: any, rightRow: any) => {
+                const combined = { ...leftRow };
+                // Prefix columns from right table with table name to avoid conflicts
+                Object.entries(rightRow).forEach(([key, value]) => {
+                    combined[`${joinTable}.${key}`] = value;
+                });
+                return combined;
+            };
 
-        // Handle WHERE conditions
-        if (whereClause) {
-            let conditions = whereClause.split(/\s+(AND|OR)\s+/i); // Split on AND/OR (case insensitive)
-            filteredData = filteredData.filter(row => {
-                let conditionResults: boolean[] = [];
-                let currentOp = 'AND';
+            // Function to check if rows match based on join condition
+            const rowsMatch = (leftRow: any, rightRow: any) => {
+                if (usingColumns) {
+                    // USING clause - match on specified columns
+                    const cols = usingColumns.split(',').map(c => c.trim());
+                    return cols.every(col => leftRow[col] === rightRow[col]);
+                } else if (leftColumn && rightColumn) {
+                    // ON clause
+                    const leftVal = leftTable ? leftRow[leftColumn] : leftRow[leftColumn];
+                    const rightVal = rightTable ? rightRow[rightColumn] : rightRow[rightColumn];
+                    return leftVal === rightVal;
+                }
+                return false;
+            };
 
-                for (let i = 0; i < conditions.length; i++) {
-                    const condition = conditions[i].trim();
+            switch (normalizedJoinType) {
+                case 'natural': {
+                    // Find common column names between tables
+                    const commonColumns = table.columns
+                        .map(col => col.name)
+                        .filter(col => joinData!.columns.map(jCol => jCol.name).includes(col));
 
-                    if (condition.toUpperCase() === 'AND' || condition.toUpperCase() === 'OR') {
-                        currentOp = condition.toUpperCase();
-                        continue;
-                    }
-
-                    const conditionMatch = condition.match(/(\w+)\s*(=|!=|>|<|>=|<=)\s*(.+)/);
-                    if (!conditionMatch) continue;
-
-                    let [, column, operator, value] = conditionMatch;
-
-                    if (!(column in row)) {
-                        conditionResults.push(false);
-                        continue;
-                    }
-
-                    // Convert value to correct type (number if applicable)
-                    if (!isNaN(Number(value))) {
-                        value = Number(value);
-                    } else if (value.startsWith("'") && value.endsWith("'")) {
-                        value = value.slice(1, -1);
-                    }
-
-                    let result = false;
-                    switch (operator) {
-                        case '=': result = row[column] == value; break;
-                        case '!=': result = row[column] != value; break;
-                        case '>': result = row[column] > value; break;
-                        case '<': result = row[column] < value; break;
-                        case '>=': result = row[column] >= value; break;
-                        case '<=': result = row[column] <= value; break;
-                    }
-
-                    conditionResults.push(result);
+                    filteredData = filteredData.flatMap(leftRow => {
+                        const matches = joinData!.data.filter(rightRow =>
+                            commonColumns.every(col => leftRow[col] === rightRow[col])
+                        );
+                        return matches.length ? matches.map(rightRow => ({ ...leftRow, ...rightRow })) : [];
+                    });
+                    break;
                 }
 
-                // Evaluate combined conditions
-                return conditionResults.reduce((acc, val, index) => {
-                    if (index === 0) return val;
-                    return currentOp === 'AND' ? acc && val : acc || val;
-                }, true);
+                case 'left': {
+                    filteredData = filteredData.map(leftRow => {
+                        const matches = joinData!.data.filter(rightRow => rowsMatch(leftRow, rightRow));
+                        return matches.length
+                            ? matches.map(rightRow => combineRows(leftRow, rightRow))
+                            : [{ ...leftRow }]; // Keep left row with nulls for right side
+                    }).flat();
+                    break;
+                }
+
+                case 'right': {
+                    filteredData = joinData!.data.map(rightRow => {
+                        const matches = filteredData.filter(leftRow => rowsMatch(leftRow, rightRow));
+                        return matches.length
+                            ? matches.map(leftRow => combineRows(leftRow, rightRow))
+                            : [{ ...rightRow }]; // Keep right row with nulls for left side
+                    }).flat();
+                    break;
+                }
+
+                case 'full': {
+                    // Start with left join
+                    const leftJoin = filteredData.map(leftRow => {
+                        const matches = joinData!.data.filter(rightRow => rowsMatch(leftRow, rightRow));
+                        return matches.length
+                            ? matches.map(rightRow => combineRows(leftRow, rightRow))
+                            : [{ ...leftRow }];
+                    }).flat();
+
+                    // Add unmatched right rows
+                    const rightOnly = joinData!.data.filter(rightRow =>
+                        !filteredData.some(leftRow => rowsMatch(leftRow, rightRow))
+                    ).map(rightRow => {
+                        const nullLeft = Object.fromEntries(
+                            table.columns.map(col => [col.name, null])
+                        );
+                        return combineRows(nullLeft, rightRow);
+                    });
+
+                    filteredData = [...leftJoin, ...rightOnly];
+                    break;
+                }
+
+                default: { // inner join
+                    filteredData = filteredData.flatMap(leftRow => {
+                        const matches = joinData!.data.filter(rightRow => rowsMatch(leftRow, rightRow));
+                        return matches.map(rightRow => combineRows(leftRow, rightRow));
+                    });
+                }
+            }
+        }
+        console.log(whereClause)
+        if (whereClause) {
+          // Split the whereClause into individual conditions
+          let conditions = whereClause.split(/\s+(AND|OR)\s+/i);
+          filteredData = filteredData.filter(row => {
+              let conditionResults: boolean[] = [];
+              let currentOp = "AND"; // Default operation is AND
+      
+              for (let i = 0; i < conditions.length; i++) {
+                  const condition = conditions[i].trim();
+                  if (condition.toUpperCase() === "AND" || condition.toUpperCase() === "OR") {
+                      currentOp = condition.toUpperCase(); // Update current operation
+                      continue; // Skip to the next iteration
+                  }
+      
+                  // Match the condition using regex
+                  const conditionMatch = condition.match(/(\w+)\s*(=|!=|<>|>|<|>=|<=)\s*(.+)/);
+                  if (!conditionMatch) {
+                      console.warn(`Invalid condition: ${condition}`);
+                      continue; // Skip if the condition is invalid
+                  }
+      
+                  let [, column, operator, value] = conditionMatch;
+      
+                  // Check if the column exists in the row
+                  if (!(column in row)) {
+                      console.warn(`Column not found in row: ${column}`);
+                      conditionResults.push(false);
+                      continue; // Skip to the next condition
+                  }
+      
+                  // Parse the value
+                  if (!isNaN(Number(value))) {
+                      value = Number(value); // Convert to number if applicable
+                  } else if (value.startsWith("'") && value.endsWith("'")) {
+                      value = value.slice(1, -1); // Remove quotes for string values
+                  }
+      
+                  // Evaluate the condition
+                  let result = false;
+                  const rowValue = row[column]; // Get the value from the row
+      
+                  switch (operator) {
+                      case "=": result = rowValue == value; break;
+                      case "!=": result = rowValue != value; break;
+                      case "<>": result = rowValue != value; break; // Handle <> as not equal
+                      case ">": result = rowValue > value; break;
+                      case "<": result = rowValue < value; break;
+                      case ">=": result = rowValue >= value; break;
+                      case "<=": result = rowValue <= value; break;
+                      default: console.warn(`Unknown operator: ${operator}`); break; // Handle unknown operators
+                  }
+      
+                  // Log the evaluation
+                  console.log(`Evaluating: ${row[column]} ${operator} ${value} => ${result}`);
+      
+                  conditionResults.push(result); // Store the result of the condition
+              }
+      
+              // Combine results based on the current operation (AND/OR)
+              return conditionResults.reduce((acc, val, index) => {
+                  if (index === 0) return val; // First value is the initial accumulator
+                  return currentOp === "AND" ? acc && val : acc || val; // Combine results
+              }, true);
+          });
+      }
+        // Handle GROUP BY and aggregations
+        if (groupByClause) {
+            const groupByColumns = groupByClause.split(',').map(col => col.trim());
+            const groups = new Map<string, any[]>();
+
+            // Group the data
+            filteredData.forEach(row => {
+                const groupKey = groupByColumns.map(col => row[col]).join('|');
+                if (!groups.has(groupKey)) {
+                    groups.set(groupKey, []);
+                }
+                groups.get(groupKey)!.push(row);
+            });
+
+            // Process each group
+            filteredData = Array.from(groups.values()).map(group => {
+                const result: Record<string, any> = {};
+
+                // Add group by columns
+                groupByColumns.forEach(col => {
+                    result[col] = group[0][col];
+                });
+
+                // Process aggregations
+                selectedColumns.forEach(col => {
+                    const aggMatch = col.match(/(COUNT|SUM|AVG|MIN|MAX)\((\*|\w+)\)/i);
+                    if (aggMatch) {
+                        const [, func, field] = aggMatch;
+                        const values = field === '*' ? group : group.map(r => r[field]).filter(v => v != null);
+
+                        switch (func.toUpperCase()) {
+                            case 'COUNT':
+                                result[col] = field === '*' ? group.length : values.length;
+                                break;
+                            case 'SUM':
+                                result[col] = values.reduce((sum: number, val: number) => sum + val, 0);
+                                break;
+                            case 'AVG':
+                                result[col] = values.length ? values.reduce((sum: number, val: number) => sum + val, 0) / values.length : null;
+                                break;
+                            case 'MIN':
+                                result[col] = values.length ? Math.min(...values) : null;
+                                break;
+                            case 'MAX':
+                                result[col] = values.length ? Math.max(...values) : null;
+                                break;
+                        }
+                    } else if (!col.includes('(')) {
+                        result[col] = group[0][col];
+                    }
+                });
+
+                return result;
+            });
+
+            // Handle HAVING clause
+            if (havingClause) {
+                const havingMatch = havingClause.match(/(\w+)\s*(=|!=|>|<|>=|<=)\s*(.+)/);
+                if (havingMatch) {
+                    const [, column, operator, rawValue] = havingMatch;
+                    const value = !isNaN(Number(rawValue)) ? Number(rawValue) : rawValue.replace(/['"]/g, '');
+
+                    filteredData = filteredData.filter(row => {
+                        switch (operator) {
+                            case '=': return row[column] == value;
+                            case '!=': return row[column] != value;
+                            case '>': return row[column] > value;
+                            case '<': return row[column] < value;
+                            case '>=': return row[column] >= value;
+                            case '<=': return row[column] <= value;
+                            default: return false;
+                        }
+                    });
+                }
+            }
+        }
+
+        // If no GROUP BY, but has aggregate functions
+        else if (selectedColumns.some(col => /^(COUNT|SUM|AVG|MIN|MAX)\(/i.test(col))) {
+            const result: Record<string, any> = {};
+            
+            selectedColumns.forEach(col => {
+                const aggMatch = col.match(/(COUNT|SUM|AVG|MIN|MAX)\((\*|\w+)\)/i);
+                if (aggMatch) {
+                    const [, func, field] = aggMatch;
+                    const values = field === '*' ? filteredData : filteredData.map(r => r[field]).filter(v => v != null);
+
+                    switch (func.toUpperCase()) {
+                        case 'COUNT':
+                            result[col] = field === '*' ? filteredData.length : values.length;
+                            break;
+                        case 'SUM':
+                            result[col] = values.reduce((sum: number, val: number) => sum + val, 0);
+                            break;
+                        case 'AVG':
+                            result[col] = values.length ? values.reduce((sum: number, val: number) => sum + val, 0) / values.length : null;
+                            break;
+                        case 'MIN':
+                            result[col] = values.length ? Math.min(...values) : null;
+                            break;
+                        case 'MAX':
+                            result[col] = values.length ? Math.max(...values) : null;
+                            break;
+                    }
+                } else {
+                    result[col] = filteredData[0]?.[col];
+                }
+            });
+
+            filteredData = [result];
+        }
+
+        // Project only selected columns if not already handled by GROUP BY
+        if (!groupByClause && !selectedColumns.some(col => /^(COUNT|SUM|AVG|MIN|MAX)\(/i.test(col))) {
+            filteredData = filteredData.map(row => {
+                const projectedRow: Record<string, any> = {};
+                selectedColumns.forEach(col => {
+                    projectedRow[col] = row[col];
+                });
+                return projectedRow;
             });
         }
 
-        // Prepare final result
         setQueryResult({
             success: true,
-            data: filteredData.map(row => {
-                let selectedRow: any = {};
-                selectedColumns.forEach(col => {
-                    if (row.hasOwnProperty(col)) {
-                        selectedRow[col] = row[col];
-                    }
-                });
-                return selectedRow;
-            }),
-            fields: selectedColumns,
+            data: filteredData,
+            fields: selectedColumns
         });
+
     } catch (error) {
-        setQueryResult({ success: false, error: 'Error processing SQL query' });
+        console.error('Query error:', error);
+        setQueryResult({ success: false, error: "Error processing SQL query" });
     }
 };
 
