@@ -1,32 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SQLEditor from '../components/SQLEditor';
 import { Exercise } from '../types';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Link } from "react-router-dom";
 import { Database, BookOpen, Code2, Layout, LogOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import initSqlJs from 'sql.js';
 
+// Add these state variables to your component
 
 
 
 const tableSchemas = {
   employees: `
 CREATE TABLE employees (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dept_id INTEGER NOT NULL,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
-  department VARCHAR(50),
-  salary DECIMAL(10,2)
+  salary DECIMAL(10,2),
+  FOREIGN KEY (dept_id) REFERENCES departments (id)
 );
 
 -- Sample data:
-INSERT INTO employees (name, email, department, salary) VALUES
-('John Doe', 'john@example.com', 'IT', 75000),
-('Jane Smith', 'jane@example.com', 'HR', 65000);
+INSERT INTO employees (dept_id, name, email, salary) VALUES
+(1, 'John Doe', 'john@example.com', 75000),
+(1, 'Jane Smith', 'jane@example.com', 65000),
+(3, 'Bob Johnson', 'bob@example.com', 85000);
 `,
   departments: `
 CREATE TABLE departments (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name VARCHAR(50) NOT NULL,
   location VARCHAR(100),
   budget DECIMAL(15,2)
@@ -35,7 +39,21 @@ CREATE TABLE departments (
 -- Sample data:
 INSERT INTO departments (name, location, budget) VALUES
 ('IT', 'New York', 1000000),
-('HR', 'Chicago', 500000);
+('HR', 'Chicago', 500000),
+('Sales', 'Los Angeles', 800000);
+`,
+students:`
+CREATE TABLE students (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,  
+  name VARCHAR(50) NOT NULL,
+  age INT, 
+  email varchar(50)
+);
+
+INSERT INTO students (name, age, email) VALUES
+('Hari Venkataraman', 20, 'hv9961@srmist.edu.in'),
+('Aman Singhal', 20, 'as4360@srmist.edu.in'),
+('Bob Smith', 19, 'bs4530@srmist.edu.in')
 `
 };
 
@@ -68,7 +86,7 @@ const exercises: Exercise[] = [
   {
     id: '4',
     question: 'Write a query to select employees from the `IT` department.',
-    expectedResult: 'SELECT * FROM employees WHERE department = \'IT\'',
+    expectedResult: 'SELECT * FROM employees e join departments d WHERE d.name = \'IT\'',
     difficulty: 'medium',
     hints: ['Use the WHERE clause', 'Use the = operator for exact match'],
     category: 'SELECT Operations'
@@ -85,7 +103,7 @@ const exercises: Exercise[] = [
   // Topic 2: Data Definition Language (DDL)
   {
     id: '6',
-    question: 'Write a query to create a table named `students` with columns `id`, `name`, and `age`.',
+    question: 'Write a query to create a table named `student` with columns `id`, `name`, and `age`.',
     expectedResult: 'CREATE TABLE students (id SERIAL PRIMARY KEY, name VARCHAR(100), age INT)',
     difficulty: 'easy',
     hints: ['Use the CREATE TABLE statement', 'Define columns with their data types'],
@@ -128,7 +146,7 @@ const exercises: Exercise[] = [
   {
     id: '11',
     question: 'Write a query to insert a new employee into the `employees` table.',
-    expectedResult: 'INSERT INTO employees (name, email, department, salary) VALUES (\'Alice\', \'alice@example.com\', \'Finance\', 80000)',
+    expectedResult: 'INSERT INTO employees (dept_id, name, email, salary) VALUES (3, \'Alice\', \'alice@example.com\', 80000)',
     difficulty: 'easy',
     hints: ['Use the INSERT INTO statement', 'Specify column names and values'],
     category: 'DML'
@@ -259,7 +277,7 @@ const exercises: Exercise[] = [
     },
     {
       id: '27',
-      question: 'Write a query to add a UNIQUE constraint to the `email` column of the `students` table.',
+      question: 'Write a query to add a UNIQUE constraint named unique_email to the `email` column of the `students` table.',
       expectedResult: 'ALTER TABLE students ADD CONSTRAINT unique_email UNIQUE (email)',
       difficulty: 'easy',
       hints: ['Use the ALTER TABLE statement', 'Use ADD CONSTRAINT'],
@@ -267,7 +285,7 @@ const exercises: Exercise[] = [
     },
     {
       id: '28',
-      question: 'Write a query to add a FOREIGN KEY constraint to the `dept_id` column of the `employees` table referencing the `id` column of the `departments` table.',
+      question: 'Write a query to add a FOREIGN KEY constraint named fk_dept to the `dept_id` column of the `employees` table referencing the `id` column of the `departments` table.',
       expectedResult: 'ALTER TABLE employees ADD CONSTRAINT fk_dept FOREIGN KEY (dept_id) REFERENCES departments(id)',
       difficulty: 'medium',
       hints: ['Use the ALTER TABLE statement', 'Use ADD CONSTRAINT with FOREIGN KEY'],
@@ -275,7 +293,7 @@ const exercises: Exercise[] = [
     },
     {
       id: '29',
-      question: 'Write a query to add a CHECK constraint to the `salary` column of the `employees` table to ensure salary is greater than 0.',
+      question: 'Write a query to add a CHECK constraint named chk_salary to the `salary` column of the `employees` table to ensure salary is greater than 0.',
       expectedResult: 'ALTER TABLE employees ADD CONSTRAINT chk_salary CHECK (salary > 0)',
       difficulty: 'medium',
       hints: ['Use the ALTER TABLE statement', 'Use ADD CONSTRAINT with CHECK'],
@@ -326,7 +344,7 @@ const exercises: Exercise[] = [
     {
       id: '35',
       question: 'Write a query to perform a SELF JOIN on the `employees` table to find employees who share the same department.',
-      expectedResult: 'SELECT e1.name, e2.name FROM employees e1 JOIN employees e2 ON e1.department = e2.department AND e1.id != e2.id',
+      expectedResult: 'SELECT e1.name, e2.name FROM employees e1 JOIN employees e2 ON e1.dept_id = e2.dept_id AND e1.id != e2.id',
       difficulty: 'hard',
       hints: ['Use a self-join', 'Join the table to itself with different aliases'],
       category: 'Joins'
@@ -352,7 +370,7 @@ const exercises: Exercise[] = [
     {
       id: '38',
       question: 'Write a query to find employees who earn more than the highest salary in the HR department.',
-      expectedResult: 'SELECT * FROM employees WHERE salary > (SELECT MAX(salary) FROM employees WHERE department = \'HR\')',
+      expectedResult: 'SELECT * FROM employees WHERE salary > (SELECT MAX(salary) FROM employees e join departments d on e.dept_id == d.id WHERE d.name = \'HR\')',
       difficulty: 'medium',
       hints: ['Use a subquery in the WHERE clause', 'Calculate the maximum salary in the HR department'],
       category: 'Subqueries'
@@ -394,7 +412,7 @@ const exercises: Exercise[] = [
     {
       id: '43',
       question: 'Write a query to find the average salary of employees in the IT department.',
-      expectedResult: 'SELECT AVG(salary) FROM employees WHERE department = \'IT\'',
+      expectedResult: 'select avg(salary) from employees e join departments d on e.dept_id == d.id where d.name == \'IT\'',
       difficulty: 'medium',
       hints: ['Use the AVG() function', 'Filter by department using WHERE'],
       category: 'Aggregate Functions'
@@ -410,7 +428,7 @@ const exercises: Exercise[] = [
     {
       id: '45',
       question: 'Write a query to find the department with the highest total salary.',
-      expectedResult: 'SELECT department, SUM(salary) FROM employees GROUP BY department ORDER BY SUM(salary) DESC LIMIT 1',
+      expectedResult: 'select sum(salary) from employees e join departments d on e.dept_id == d.id group by d.name order by sum(salary) desc limit 1',
       difficulty: 'hard',
       hints: ['Use GROUP BY and SUM()', 'Order the results in descending order'],
       category: 'Aggregate Functions'
@@ -420,7 +438,7 @@ const exercises: Exercise[] = [
     {
       id: '46',
       question: 'Write a query to group employees by department and count the number of employees in each department.',
-      expectedResult: 'SELECT department, COUNT(*) FROM employees GROUP BY department',
+      expectedResult: 'SELECT d.name as department, COUNT(*) FROM employees e join departments d on e.dept_id == d.id GROUP BY d.name',
       difficulty: 'easy',
       hints: ['Use GROUP BY', 'Use COUNT() to count employees'],
       category: 'Grouping & Filtering'
@@ -428,7 +446,7 @@ const exercises: Exercise[] = [
     {
       id: '47',
       question: 'Write a query to find departments with more than 5 employees.',
-      expectedResult: 'SELECT department FROM employees GROUP BY department HAVING COUNT(*) > 5',
+      expectedResult: 'SELECT d.name as department FROM employees e join departments d on e.dept_id == d.id GROUP BY d.name HAVING COUNT(*) > 5',
       difficulty: 'easy',
       hints: ['Use GROUP BY', 'Use HAVING to filter groups'],
       category: 'Grouping & Filtering'
@@ -436,7 +454,7 @@ const exercises: Exercise[] = [
     {
       id: '48',
       question: 'Write a query to find the average salary by department, ordered by average salary in descending order.',
-      expectedResult: 'SELECT department, AVG(salary) FROM employees GROUP BY department ORDER BY AVG(salary) DESC',
+      expectedResult: 'SELECT d.name, AVG(e.salary) FROM employees e join departments d on e.dept_id == d.id GROUP BY d.name ORDER BY AVG(e.salary) DESC',
       difficulty: 'medium',
       hints: ['Use GROUP BY', 'Use ORDER BY to sort the results'],
       category: 'Grouping & Filtering'
@@ -444,7 +462,7 @@ const exercises: Exercise[] = [
     {
       id: '49',
       question: 'Write a query to find departments where the average salary is greater than 60000.',
-      expectedResult: 'SELECT department FROM employees GROUP BY department HAVING AVG(salary) > 60000',
+      expectedResult: 'SELECT d.name FROM employees e join departments d on e.dept_id == d.id GROUP BY d.name HAVING AVG(e.salary) > 60000',
       difficulty: 'medium',
       hints: ['Use GROUP BY', 'Use HAVING to filter groups'],
       category: 'Grouping & Filtering'
@@ -452,7 +470,7 @@ const exercises: Exercise[] = [
     {
       id: '50',
       question: 'Write a query to find the department with the highest number of employees.',
-      expectedResult: 'SELECT department FROM employees GROUP BY department ORDER BY COUNT(*) DESC LIMIT 1',
+      expectedResult: 'SELECT d.name FROM employees e join departments d on e.dept_id == d.id GROUP BY d.name ORDER BY COUNT(*) DESC LIMIT 1',
       difficulty: 'hard',
       hints: ['Use GROUP BY', 'Use ORDER BY and LIMIT to find the top result'],
       category: 'Grouping & Filtering'
@@ -592,15 +610,314 @@ export default function Practice() {
   const isActive = (path) => location.pathname === path;
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [showHint, setShowHint] = useState(false);
+  const [storedUser, setUser] = useState(localStorage.getItem("user"));
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [query, setQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sqlDb, setSqlDb] = useState<any>(null);
 
-  const checkAnswer = (query: string) => {
-    if (!selectedExercise) return;
-    const isCorrect = query.trim().toLowerCase() === selectedExercise.expectedResult.toLowerCase();
-    alert(isCorrect ? 'Correct!' : 'Try again!');
+  const handleExerciseSelect = (exercise) => {
+    setSelectedExercise(exercise);  // Update selected question
+    setQuery('');                   // Clear SQL editor
+    setQueryResult(null);           // Clear result table
+    setError('');                   // Clear any error
   };
-  const handleLogout = async () => {
-    await fetch("http://localhost:5000/logout", { method: "POST" });
+  
+
+
+  useEffect(() => {
+    const initSql = async () => {
+      try {
+        const SQL = await initSqlJs({
+          locateFile: file => `https://sql.js.org/dist/${file}`
+        });
+        setSqlDb(SQL);
+      } catch (err) {
+        console.error('Failed to initialize SQL.js', err);
+        setError('Failed to initialize SQL engine. Please refresh the page.');
+      }
+    };
+    
+    initSql();
+  }, []);
+  
+
+  const checkAnswer = async (query: string) => {
+    if (!selectedExercise || !sqlDb) return;
+    
+    setIsLoading(true);
+    setError(null);
+    setQueryResult(null);
+    
+    try {
+      const db = new sqlDb.Database();
+      
+      // Execute the table creation schemas first
+      Object.values(tableSchemas).forEach(schema => {
+        try {
+          db.exec(schema);
+        } catch (err) {
+          console.error('Error creating schema:', err);
+        }
+      });
+      
+      const category = selectedExercise.category;
+      
+      // Handle different query types differently
+      if (['SELECT Operations', 'Joins', 'Subqueries', 'Aggregate Functions', 'Grouping & Filtering'].includes(category)) {
+        // For SELECT queries, compare result sets
+        try {
+          // Execute user's query
+          const userResult = db.exec(query);
+          
+          // Execute expected query
+          const expectedResult = db.exec(selectedExercise.expectedResult);
+          
+          // Compare results
+          const isCorrect = compareResults(userResult, expectedResult);
+          
+          // Display results
+          setQueryResult({
+            userResult: userResult.length > 0 ? userResult[0] : { columns: [], values: [] },
+            expectedResult: expectedResult.length > 0 ? expectedResult[0] : { columns: [], values: [] },
+            isCorrect
+          });
+        } catch (err: any) {
+          setError(`SQL Error: ${err.message}`);
+        }
+      } else if (['DDL', 'Constraints', 'Indexing & Performance'].includes(category)) {
+        try {
+          let isCorrect = false;
+          if (category === 'Constraints' || selectedExercise.expectedResult.toLowerCase().startsWith("drop")){
+            const normalizeSQL = (sql: string) =>
+              sql
+                .trim()
+                .replace(/\s+/g, ' ')
+                .replace(/;$/, '')
+                .toLowerCase();
+      
+            isCorrect =
+              normalizeSQL(query) === normalizeSQL(selectedExercise.expectedResult);
+          } else{
+              db.exec(query);
+          }
+          
+      
+          if (selectedExercise.expectedResult.toLowerCase().startsWith("create table") || selectedExercise.expectedResult.toLowerCase().startsWith("create index")) {
+            // For CREATE TABLE, use structure verification
+            isCorrect = verifyTableStructure(db, selectedExercise);
+          } else {
+            // Normalize both queries before comparing
+            const normalizeSQL = (sql: string) =>
+              sql
+                .trim()
+                .replace(/\s+/g, ' ')
+                .replace(/;$/, '')
+                .toLowerCase();
+      
+            isCorrect =
+              normalizeSQL(query) === normalizeSQL(selectedExercise.expectedResult);
+          }
+      
+          setQueryResult({
+            message: isCorrect
+              ? "Correct!"
+              : "Incorrect. The SQL query doesn't match the expected result.",
+            isCorrect
+          });
+        } catch (err: any) {
+          setError(`SQL Error: ${err.message}`);
+        }
+      }
+      
+      else if (['DML'].includes(category)) {
+        try {
+          // Normalize helper
+          const normalizeSQL = (sql: string) =>
+            sql.trim().replace(/\s+/g, ' ').replace(/;$/, '').toLowerCase();
+      
+          const isInsert = normalizeSQL(query).startsWith('insert');
+      
+          if (isInsert) {
+            // Use a regex to match the table name and inserted columns
+            const insertRegex = /insert\s+into\s+(\w+)\s*\((.*?)\)\s*values\s*\((.*?)\)/i;
+            const userMatch = query.match(insertRegex);
+            const expectedMatch = selectedExercise.expectedResult.match(insertRegex);
+          
+            let isCorrect = false;
+          
+            if (userMatch && expectedMatch) {
+              const [, userTable, userCols] = userMatch;
+              const [, expectedTable, expectedCols] = expectedMatch;
+          
+              const normalize = (str: string) =>
+                str
+                  .split(',')
+                  .map(s => s.trim().toLowerCase())
+                  .sort()
+                  .join(',');
+          
+              isCorrect =
+                userTable.toLowerCase() === expectedTable.toLowerCase() &&
+                normalize(userCols) === normalize(expectedCols);
+            }
+          
+            setQueryResult({
+              message: isCorrect ? 'Correct!' : 'Incorrect query structure.',
+              isCorrect,
+            });
+          }
+           else {
+            // For UPDATE/DELETE — run full table state comparison
+            db.exec(query);
+      
+            const expectedDb = new sqlDb.Database();
+            Object.values(tableSchemas).forEach(schema => {
+              expectedDb.exec(schema);
+            });
+            expectedDb.exec(selectedExercise.expectedResult);
+      
+            const userTables = getRelevantTableData(db, selectedExercise);
+            const expectedTables = getRelevantTableData(expectedDb, selectedExercise);
+      
+            const isCorrect = compareTableStates(userTables, expectedTables);
+      
+            setQueryResult({
+              userTables,
+              expectedTables,
+              isCorrect
+            });
+          }
+        } catch (err: any) {
+          setError(`SQL Error: ${err.message}`);
+        }
+      }
+       else if (['DCL', 'TCL', 'Stored Procedures & Functions', 'Triggers'].includes(category)) {
+        // For these types, we'll just do string comparison as they're harder to validate
+        const normalize = (str: string) =>
+          str.replace(/\s+/g, " ").toLowerCase().trim();
+        
+        const userNormalized = normalize(query);
+        const expectedNormalized = normalize(selectedExercise.expectedResult);
+        
+        // Flexibility for these complex statements
+        const isCorrect = userNormalized === expectedNormalized ||
+                          userNormalized.includes(expectedNormalized) ||
+                          expectedNormalized.includes(userNormalized);
+        
+        setQueryResult({
+          message: `Query syntax ${isCorrect ? 'matches' : 'does not match'} expected pattern.`,
+          isCorrect
+        });
+      }
+      
+      // Close database
+      db.close();
+      
+    } catch (err: any) {
+      setError(`Execution error: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  const compareResults = (userResult: any[], expectedResult: any[]) => {
+    if (userResult.length !== expectedResult.length) return false;
+    if (userResult.length === 0) return true; // Both empty
+    
+    const user = userResult[0];
+    const expected = expectedResult[0];
+    
+    // Compare column count
+    if (user.columns.length !== expected.columns.length) return false;
+    
+    // Compare row count
+    if (user.values.length !== expected.values.length) return false;
+    
+    // Compare data (ignoring column names for flexibility)
+    for (let i = 0; i < user.values.length; i++) {
+      const userRow = user.values[i];
+      const expectedRow = expected.values[i];
+      
+      if (userRow.length !== expectedRow.length) return false;
+      
+      for (let j = 0; j < userRow.length; j++) {
+        // Convert to string for comparison to handle different types
+        if (String(userRow[j]) !== String(expectedRow[j])) return false;
+      }
+    }
+    
+    return true;
+  };
+  
+  const verifyTableStructure = (db: any, exercise: Exercise) => {
+    try {
+      // Extract table name from the exercise (this would need refinement based on actual questions)
+      const tableName = extractTableName(exercise.expectedResult);
+      
+      if (!tableName) return false;
+      
+      // Get table info
+      const tableInfo = db.exec(`PRAGMA table_info(${tableName})`);
+      
+      // If we can get table info, consider it successful for basic DDL
+      return tableInfo && tableInfo.length > 0;
+    } catch (err) {
+      return false;
+    }
+  };
+  
+  const extractTableName = (query: string) => {
+    const match = query.match(/CREATE TABLE\s+(\w+)/i) || 
+                  query.match(/ALTER TABLE\s+(\w+)/i) ||
+                  query.match(/DROP TABLE\s+(\w+)/i) ||
+                  query.match(/CREATE INDEX\s+\w+\s+ON\s+(\w+)/i);
+    
+    return match ? match[1] : null;
+  };
+  
+  const getRelevantTableData = (db: any, exercise: Exercise) => {
+    // For DML exercises, we need to determine which tables might have been affected
+    const tables = ['employees', 'departments']; // Add other tables as needed
+    
+    const results: Record<string, any> = {};
+    
+    tables.forEach(table => {
+      try {
+        const result = db.exec(`SELECT * FROM ${table}`);
+        if (result && result.length > 0) {
+          results[table] = result[0];
+        }
+      } catch (err) {
+        // Table might not exist
+      }
+    });
+    
+    return results;
+  };
+  
+  const compareTableStates = (userTables: Record<string, any>, expectedTables: Record<string, any>) => {
+    // Compare the states of all tables
+    const allTables = new Set([...Object.keys(userTables), ...Object.keys(expectedTables)]);
+    
+    for (const table of allTables) {
+      const userTable = userTables[table];
+      const expectedTable = expectedTables[table];
+      
+      // If one has a table the other doesn't
+      if (!userTable || !expectedTable) return false;
+      
+      // Compare the table contents
+      if (!compareResults([userTable], [expectedTable])) return false;
+    }
+    
+    return true;
+  };  
+  
+  const handleLogout = () => {
     localStorage.removeItem("user");
+    localStorage.removeItem("tables");
+    setUser(null);
     navigate("/");
   };
 
@@ -686,8 +1003,9 @@ export default function Practice() {
                             <button
                               key={exercise.id}
                               onClick={() => {
-                                setSelectedExercise(exercise);
+                                handleExerciseSelect(exercise);
                                 setShowHint(false);
+                                setQuery('');
                               }}
                               className={`w-full text-left p-4 rounded-lg border transition
                                 ${selectedExercise?.id === exercise.id
@@ -751,8 +1069,162 @@ export default function Practice() {
                   )}
 
                   <div className="mb-6">
-                    <SQLEditor onExecute={checkAnswer} />
+                  <SQLEditor 
+                    query={query}
+                    setQuery={setQuery}
+                    onExecute={checkAnswer}
+                                          />
+
                   </div>
+
+                  {/* Query Results Section */}
+                  {isLoading && (
+                    <div className="mt-6 p-4 bg-blue-50 rounded-lg flex items-center">
+                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin mr-2" />
+                      <span className="text-blue-600 font-medium">Executing query...</span>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <h3 className="text-red-700 font-medium text-lg mb-2">Error</h3>
+                      <p className="text-red-600 font-mono text-sm whitespace-pre-wrap">{error}</p>
+                    </div>
+                  )}
+
+                  {queryResult && (
+                    <div className="mt-6 flex flex-col space-y-6">
+                      {/* Feedback Message */}
+                      <div className={`p-4 rounded-lg ${
+                        queryResult.isCorrect 
+                          ? 'bg-green-50 border border-green-200' 
+                          : 'bg-amber-50 border border-amber-200'
+                      }`}>
+                        <div className="flex items-center mb-2">
+                          {queryResult.isCorrect ? (
+                            <CheckCircle className="w-6 h-6 text-green-600 mr-2" />
+                          ) : (
+                            <AlertCircle className="w-6 h-6 text-amber-600 mr-2" />
+                          )}
+                          <h3 className={`font-medium text-lg ${
+                            queryResult.isCorrect ? 'text-green-700' : 'text-amber-700'
+                          }`}>
+                            {queryResult.isCorrect ? 'Correct!' : 'Incorrect. Keep trying!'}
+                          </h3>
+                        </div>
+                        {queryResult.message && (
+                          <p className={`mt-1 ${
+                            queryResult.isCorrect ? 'text-green-600' : 'text-amber-600'
+                          }`}>
+                            {queryResult.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Query Results Table */}
+                      {queryResult.userResult && (
+                        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                            <h3 className="text-gray-700 font-medium flex items-center">
+                              <Database className="w-4 h-4 mr-2 text-indigo-500" />
+                              Your Query Result:
+                            </h3>
+                          </div>
+                          
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  {queryResult.userResult.columns.map((col: string, i: number) => (
+                                    <th 
+                                      key={i}
+                                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                      {col}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {queryResult.userResult.values.map((row: any[], i: number) => (
+                                  <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                    {row.map((cell, j) => (
+                                      <td 
+                                        key={j}
+                                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-mono"
+                                      >
+                                        {String(cell)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                                {queryResult.userResult.values.length === 0 && (
+                                  <tr>
+                                    <td 
+                                      colSpan={queryResult.userResult.columns.length || 1}
+                                      className="px-6 py-4 text-center text-sm text-gray-500 italic"
+                                    >
+                                      No results
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Updated Tables Section */}
+                      {queryResult.userTables && Object.keys(queryResult.userTables).length > 0 && (
+                        <div className="space-y-6">
+                          <h3 className="text-lg font-medium text-gray-700">
+                            Updated Table Data:
+                          </h3>
+                          {Object.entries(queryResult.userTables).map(([tableName, table]: [string, any]) => (
+                            <div key={tableName} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                                <h4 className="text-gray-700 font-medium flex items-center">
+                                  <Database className="w-4 h-4 mr-2 text-indigo-500" />
+                                  {tableName}
+                                </h4>
+                              </div>
+                              
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      {table.columns.map((col: string, i: number) => (
+                                        <th 
+                                          key={i}
+                                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                        >
+                                          {col}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="bg-white divide-y divide-gray-200">
+                                    {table.values.map((row: any[], i: number) => (
+                                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                        {row.map((cell, j) => (
+                                          <td 
+                                            key={j}
+                                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-mono"
+                                          >
+                                            {String(cell)}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <button
                     onClick={() => setShowHint(!showHint)}

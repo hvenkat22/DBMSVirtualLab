@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Play, Trash2 } from 'lucide-react';
 
 interface Props {
+  query: string;
+  setQuery: (val: string) => void;
   onExecute: (query: string) => void;
   placeholder?: string;
 }
 
-export default function SQLEditor({ onExecute, placeholder }: Props) {
-  const [query, setQuery] = useState('');
-
+export default function SQLEditor({ query, setQuery, onExecute, placeholder }: Props) {
   return (
     <div className="w-full space-y-4">
       <div className="relative">

@@ -2,6 +2,12 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Database, BookOpen, Code2, Layout, LogOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || '',
+  import.meta.env.VITE_SUPABASE_PUBLIC_ANON_KEY || ''
+);
 
 export default function Homepage() {
   const location = useLocation();
@@ -9,19 +15,51 @@ export default function Homepage() {
 
   const isActive = (path) => location.pathname === path;
 
-  const [user, setUser] = useState(localStorage.getItem("user"));
+  const [storedUser, setUser] = useState(localStorage.getItem("user"));
+  const user = storedUser ? JSON.parse(storedUser) : null;
+
   const handleDownloadUsers = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:5000/download_users");
-      if (!response.ok) throw new Error("Failed to download file");
+      // Fetch all users from the 'users' table
+      const { data, error } = await supabase.from("users").select("*");
   
-      const blob = await response.blob();
+      if (error) throw error;
+  
+      if (!data || data.length === 0) {
+        alert("No user data found.");
+        return;
+      }
+  
+      // Remove sensitive fields like password from each row
+      const cleanedData = data.map(({ password, ...rest }) => rest);
+  
+      const headers = Object.keys(cleanedData[0]);
+      const csvRows = [
+        headers.join(","), // Header row
+        ...cleanedData.map(row =>
+          headers.map(field => {
+            const val = row[field];
+            if (val === null || val === undefined) return "";
+            if (typeof val === "string" && val.includes(",")) {
+              return `"${val.replace(/"/g, '""')}"`; // Escape quotes for CSV
+            }
+            return val;
+          }).join(",")
+        )
+      ];
+  
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  
+      // Trigger file download
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = "users.csv";
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     } catch (error) {
-      console.error("Download error:", error);
+      console.error("Download error:", error.message || error);
     }
   };
   
@@ -36,9 +74,9 @@ export default function Homepage() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  const handleLogout = async () => {
-    await fetch("http://localhost:5000/logout", { method: "POST" });
+  const handleLogout = () => {
     localStorage.removeItem("user");
+    localStorage.removeItem("tables");
     setUser(null);
     navigate("/");
   };
@@ -118,7 +156,7 @@ export default function Homepage() {
             Welcome to DBMS Virtual Lab
           </h1>
           <p className="text-xl text-gray-700 mb-8">
-            {user ? `Hello, ${user}! Explore DBMS below.` : "Please log in to access content."}
+            {user ? `Hello, ${user.name} (${user.username})! Explore DBMS below.` : "Please log in to access content."}
           </p>
           {!user ? (
             <>

@@ -604,6 +604,7 @@ const Quiz: React.FC<{ questions: QuizItem[] }> = ({ questions }) => {
 export default function Theory() {
   const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null);
+  const [storedUser, setUser] = useState(localStorage.getItem("user"));
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (path) => location.pathname === path;
@@ -624,9 +625,10 @@ export default function Theory() {
       prev.includes(topicId) ? prev.filter((id) => id !== topicId) : [...prev, topicId]
     );
   };
-  const handleLogout = async () => {
-    await fetch("http://localhost:5000/logout", { method: "POST" });
+  const handleLogout = () => {
     localStorage.removeItem("user");
+    localStorage.removeItem("tables");
+    setUser(null);
     navigate("/");
   };
 

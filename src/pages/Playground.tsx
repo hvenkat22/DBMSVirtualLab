@@ -31,14 +31,23 @@ interface QueryResult {
 
 export default function Playground() {
   const location = useLocation();
+  const [storedUser, setUser] = useState(localStorage.getItem("user"));
   const navigate = useNavigate();
   const isActive = (path) => location.pathname === path;
-  const [tables, setTables] = useState<Table[]>([]);
+  const [tables, setTables] = useState(() => {
+    const savedTables = localStorage.getItem('tables');
+    return savedTables ? JSON.parse(savedTables) : [];
+  }); 
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTableDefinition, setNewTableDefinition] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    localStorage.setItem('tables', JSON.stringify(tables));
+  }, [tables]);
+  
 
   // Sync selectedTable with tables
   useEffect(() => {
@@ -49,6 +58,8 @@ export default function Playground() {
       }
     }
   }, [tables]);
+
+
 
   const parseCreateTableSQL = (sql: string): Table | null => {
     try {
@@ -118,9 +129,10 @@ export default function Playground() {
       });
     }
   };
-  const handleLogout = async () => {
-    await fetch("http://localhost:5000/logout", { method: "POST" });
+  const handleLogout = () => {
     localStorage.removeItem("user");
+    localStorage.removeItem("tables");
+    setUser(null);
     navigate("/");
   };
 
