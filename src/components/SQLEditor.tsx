@@ -10,7 +10,7 @@ interface Props {
 
 export default function SQLEditor({ query, setQuery, onExecute, placeholder }: Props) {
   return (
-    <div className="w-full space-y-4">
+    <div className="relative border border-gray-700 rounded-lg">
       <div className="relative">
         <textarea
           value={query}

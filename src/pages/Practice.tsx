@@ -111,8 +111,8 @@ const exercises: Exercise[] = [
   },
   {
     id: '7',
-    question: 'Write a query to add a new column `email` to the `students` table.',
-    expectedResult: 'ALTER TABLE students ADD COLUMN email VARCHAR(255)',
+    question: 'Write a query to add a new column `gpa` to the `students` table.',
+    expectedResult: 'ALTER TABLE students ADD COLUMN gpa FLOAT',
     difficulty: 'easy',
     hints: ['Use the ALTER TABLE statement', 'Use ADD COLUMN to add a new column'],
     category: 'DDL'
