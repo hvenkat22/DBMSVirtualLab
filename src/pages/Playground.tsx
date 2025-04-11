@@ -53,7 +53,7 @@ export default function Playground() {
       try {
         setLoading(true);
         const SQL = await initSqlJs({
-          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+          locateFile: file => `https://sql.js.org/dist/${file}`
         });
         
         // Create a new database instance
